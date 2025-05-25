@@ -1,0 +1,114 @@
+
+%% Load Data
+% [Inputs, Targets] = house_dataset; % its an Example for Entering Data
+clear all;
+clc;
+close all;
+M=10;
+N=10;
+alpha=[2 5 1 7	12 17 6 5 4 10 3 7];
+sn=100;
+data=mahSA_NN_Project( alpha(1:N),M,sn);
+linput=size(data,2);
+Inputs=data();
+Targets=Y';
+nData = size(Inputs,2);
+Perm = randperm(nData);
+
+% Train Data
+pTrain = 0.7;
+nTrainData = round(pTrain*nData);
+TrainInd = Perm(1:nTrainData);
+TrainInputs = Inputs(:,TrainInd);
+TrainTargets = Targets(:,TrainInd);
+
+% Test Data
+pTest = 1 - pTrain;
+nTestData = nData - nTrainData;
+TestInd = Perm(nTrainData+1:end);
+TestInputs = Inputs(:,TestInd);
+TestTargets = Targets(:,TestInd);
+
+%% Create and Train GMDH Network
+
+params.MaxLayerNeurons = 20;   % Maximum Number of Neurons in a Layer
+params.MaxLayers = 10;         % Maximum Number of Layers
+params.alpha = 0.6;              % Selection Pressure
+params.pTrain = 0.5;           % Train Ratio
+
+%% Phase I
+
+N=10;                          % number of loops to gain "Mean" RMSE
+                               % higher N cause more precission
+EvaluationRMSEs=zeros(N,1);
+disp('Evaluation of the netwoerk by RMSE please wait...')
+Egmdh=cell(N,1);
+for n=1:N
+    gmdh = GMDH(params, TrainInputs, TrainTargets);
+    EvaluationRMSEs(n)=gmdh.Layers{end}.RMSE2;
+    Egmdh{n}=gmdh;
+end
+
+clc;
+%  If the "Mean" RMSE is needed use this code :
+% PossibleGoodRMSE=mean(EvaluationRMSEs);
+
+%  If the "Minimum" RMSE is needed use this code :
+PossibleGoodRMSE=min(EvaluationRMSEs);     
+
+%% Phase II :
+
+[~,Sortorder]=sort(EvaluationRMSEs);
+Egmdh=Egmdh(Sortorder);
+MaximumVariance=.1;
+
+for m=1:N
+    Variance=abs(Egmdh{m}.Layers{end}.RMSE2-PossibleGoodRMSE)/PossibleGoodRMSE;
+    if Variance<MaximumVariance
+        Truegmdh=Egmdh{m};
+       break;
+    end
+end
+
+MaxLayerNeurons=params.MaxLayerNeurons;
+for MaxLayerNeurons=2:MaxLayerNeurons
+    params.MaxLayerNeurons=MaxLayerNeurons;
+    A=NonShuffleGMDH(Truegmdh,params);
+    plot(MaxLayerNeurons,A.RMSE,'o','markerfacecolor','r')
+    xlabel('Neurons')
+    ylabel('RMSE')
+    hold on
+    grid on
+    
+    if MaxLayerNeurons==2        % In the first Loop defineing evaluation point
+        Network=A;
+    else
+        if A.RMSE<Network.RMSE
+            Network=A;
+        end
+    end
+end
+
+%% Phase III
+
+% Plot Neuroal Network
+Network=A;              % In this point we make the program goes fo the last network
+                        % (Network with MaxLayerNeurons) if you want the
+                        % prog goes for the Optmised one simply "Comment"
+                        % this Line
+Plotneurones(Network);
+    
+
+% Evaluate GMDH Network
+
+Outputs = ApplyGMDH(Network, Inputs);
+TrainOutputs = Outputs(:,TrainInd);
+
+% Show Results
+
+figure;
+PlotResults(TrainTargets, TrainOutputs, 'Train Data');
+
+figure;
+plotregression(TrainTargets, TrainOutputs, 'Train Data')
+  
